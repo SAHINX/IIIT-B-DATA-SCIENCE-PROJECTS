@@ -1,0 +1,292 @@
+#============================SVM ASSIGNMENT=================================
+# 1. Business Understanding
+# 2. Data Understanding
+# 3. Data Preparation
+# 4. Model Building 
+#  4.1 linear svm with c=1
+#  4.2 Linear svm with c=10
+#  4.3 Linear kernel
+#  4.4 RBF Kernel
+# 5 Hyperparameter tuning and cross validation
+
+#==================================================================================
+# 1. Business Understanding: 
+
+#The objective is to identify and develop a model using Support Vector Machine 
+#which should correctly classify the handwritten digits based on the pixel values given as features
+
+#=================================================================================
+install.packages("caret")
+install.packages("kernlab")
+install.packages("dplyr")
+install.packages("readr")
+install.packages("ggplot2")
+install.packages("gridExtra")
+
+library("caret")
+library("kernlab")
+library("dplyr")
+library("readr")
+library("ggplot2")
+library("gridExtra")
+library("caTools")
+#----------------------------------------------------------------------------------------
+#LOADING THE MNIST DATA.
+
+original_train<-read.csv("mnist_train.csv",header = FALSE,stringsAsFactors = FALSE)
+
+original_test<-read.csv("mnist_test.csv",header = FALSE,stringsAsFactors = FALSE)
+#-----------------------------------------------------------------------------------------
+#3.DATA PREPERATION
+#UNDERSTANDING DIMENSIONS IN DATASETS
+
+
+dim(original_train)
+#[1]60000   785
+dim(original_test)
+#  [1] 10000   785
+
+#------------------------------------------------------------------------------------------
+#STRUCTURE OF DATASETS
+
+str(original_train)
+
+str(original_test)
+#-----------------------------------------------------------------------------------------
+#CHECKING FIRST FEW ROWS
+
+head(original_train)
+head(original_test)
+
+#---------------------------------------------
+#Exploring the data
+
+summary(original_train)
+
+summary(original_test)
+
+#----------------------------------------------
+#CHECKING FOR MISSING VALUE IN BOTH DATASETS
+
+sapply(original_train, function(x) sum(is.na(x)))
+
+sapply(original_test, function(x) sum(is.na(x)))
+
+sum(is.na(original_train))
+#[1] 0
+ sum(is.na(original_test))
+#[1] 0
+
+#THERE ARE NO NA'S IN DATSETS
+#----------------------------------------------------------------------
+ #changing the column name v1 into numbers 
+ 
+ names(original_train)[1]<-paste("Numbers") 
+ 
+ names(original_test)[1]<-paste("Numbers")
+
+#-----------------------------------------------------------------------
+#Making our target class to factor for original train and test datasets
+ 
+original_train$Numbers<-factor(original_train$Numbers)
+ 
+summary(original_train$Numbers) # summarizing the column
+
+original_test$Numbers<-factor(original_test$Numbers)
+
+summary(original_test$Numbers)
+#===========================================================================
+# TAKE SAMPLE FROM ORIGINAL TRAIN AND SPLITTING SAMPLE DATASET INTO TEST AND TRAIN
+
+
+set.seed(100)
+
+indices = sample.split(original_train$Numbers, SplitRatio = 0.1)
+
+sample_train<-original_train[indices,]
+summary(sample_train$Numbers)
+
+#--------------------------------------------------------
+#SPLITTING SAMPLE INTO TEST AND TRAIN
+
+set.seed(100)
+indices = sample.split(sample_train$Numbers, SplitRatio = 0.7)
+
+train = sample_train[indices, ]
+test = sample_train[!(indices), ]
+
+summary(train$Numbers) #CHECKING THE DISTRIBUTION OF NUMBERS
+
+summary(test$Numbers)  #CHECKING THE DISTRIBUTION OF NUMBERS
+
+#=====================================================================================
+#4.MODEL BUILDING
+#4.1 LINEAR MODEL
+
+#Linear model 1- SVM  at Cost(C) = 1
+
+model_1<- ksvm(Numbers ~ ., data = train,scale = FALSE,C=1)
+
+# Predicting the model results 
+evaluate_1<- predict(model_1, test)
+
+# Confusion Matrix - Finding accuracy, Sensitivity and specificity
+confusionMatrix(evaluate_1, test$Numbers)
+
+# Accuracy : 0.9498  #Accuracy : 0.9457
+#--------------------------------------------------------------------------
+#Linear model 2- SVM  at Cost(C) = 10
+
+model_10<- ksvm(Numbers ~ ., data = train,scale = FALSE,C=10)
+
+# Predicting the model results 
+evaluate_10<- predict(model_10, test)
+
+# Confusion Matrix - Finding accuracy, Sensitivity and specificity
+
+confusionMatrix(evaluate_10, test$Numbers)
+
+#Accuracy : 0.9569   Accuracy : 0.958 
+#---------------------------------------------------------------------------
+#4.2 USING LINEAR KERNEL
+
+Model_linear <- ksvm(Numbers~ ., data = train, scale = FALSE, kernel = "vanilladot")
+
+Eval_linear<- predict(Model_linear, test)
+
+#confusion matrix - Linear Kernel
+
+confusionMatrix(Eval_linear,test$Numbers)
+
+#Accuracy : 0.9123   Accuracy : 0.9144 Accuracy : 0.9084
+
+#=====================================================================================
+#Using RBF KERNEL
+
+Model_RBF <- ksvm(Numbers~ ., data = train, scale = FALSE, kernel = "rbfdot")
+
+Eval_RBF<- predict(Model_RBF, test)
+
+#confusion matrix - Linear Kernel
+confusionMatrix(Eval_RBF,test$Numbers)
+
+#ACCURACY ON  TEST DATSET BY TOTAL ATTEMPTS USING DIFFERENT DATAPOINTS
+ #Accuracy : 0.945 Accuracy : 0.9439  #Accuracy : 0.9495     Accuracy : 0.9463 Accuracy : 0.9457
+
+#=====================================================================================
+#checking the models on MNSIT test dataset containing 10000 datapoints
+
+Eval_og_train<-predict(Model_linear,original_test)
+confusionMatrix(Eval_og_train,original_test$Numbers)
+
+Accuracy : 0.9129  Accuracy : 0.9137 
+
+
+#---------------------------------------------------------------
+
+Eval_og_RBF<-predict(Model_RBF,original_test)
+confusionMatrix(Eval_og_RBF,original_test$Numbers)
+
+#ACCURACY ON MNSIT TEST DATSET BY TOTAL ATTEMPTS USING DIFFERENT DATAPOINTS
+# Accuracy : 0.9458 Accuracy : 0.9451 Accuracy : 0.9508    Accuracy : 0.9459
+
+#========================================================================================
+
+############   Hyperparameter tuning and Cross Validation #####################
+
+#CV WITH LINEAR KERNEL
+
+ trainControl <- trainControl(method="cv", number=5)
+ metric <- "Accuracy"
+ set.seed(100)
+grid <- expand.grid(C=c(0.1,0.9,1,0.01,0.09,0.001) ) 
+fit.svm <- train(Numbers~., data=train, method="svmLinear", metric=metric, preProc=c("center","scale"),
+                               tuneGrid=grid, trControl=trainControl)
+
+#--------------------------------------------------------------------------------
+print(fit.svm)
+
+#---------------------------------------------------------------------------------
+#Support Vector Machines with Linear Kernel
+# C      Accuracy   Kappa    
+  0.010  0.9121033  0.9022939
+
+Accuracy was used to select the optimal model using  the largest value.
+The final value used for the model was C = 0.01.
+#----------------------------------------------------------------------------------
+plot(fit.svm)
+
+#---------------------------------------------------------------------------------------
+# Validating the model results on test data
+
+evaluate_linear<- predict(fit.svm, test)
+confusionMatrix(evaluate_linear, test$Numbers)
+
+#Accuracy : 0.9106 
+#Accuracy : 0.9123 Accuracy : 0.9144
+#Accuracy : 0.9177
+#------------------------------------------------------------------------------------------
+Validating the model results on mnsit test dataset
+
+evaluate_linear<- predict(fit.svm, original_test)
+confusionMatrix(evaluate_linear,original_test$Numbers)
+
+ #ACCURACY ON MNSIT TEST DATSET BY TOTAL ATTEMPTS USING DIFFERENT DATAPOINTS
+
+ #Accuracy : 0.9241 Accuracy : 0.9129  Accuracy : 0.9137   #Accuracy : 0.9211 
+#===============================================================================
+#CROSS VALIDATION USING NON LINEAR SVM RADIAL.
+
+# We will use the train function from caret package to perform Cross Validation. 
+
+trainControl <- trainControl(method="cv",number=5)
+
+
+metric <- "Accuracy"
+
+set.seed(100)
+
+#Expand.grid functions takes set of hyperparameters, that we shall pass to our model.
+
+
+grid <- expand.grid(.sigma=c(1.65221399579178e-07,1.65221399579178e-01,1.65221399579178e-03,1.65221399579178e-05,0.965,1.965,16.965,32.965)
+, .C=c(0.01,0.1,0.001,1,10,25,40,90)
+
+fit.svm <- train(Numbers~., data=train, method="svmRadial", metric=metric,preProc=c("center","scale"),
+                 tuneGrid=grid, trControl=trainControl)
+
+
+ 
+
+print(fit.svm)
+
+
+plot(fit.svm)
+
+######################################################################
+# Checking overfitting - Non-Linear - SVM Radial
+######################################################################
+
+# Validating the model results on test data
+evaluate_radial<- predict(fit.svm, test)
+confusionMatrix(evaluate_radial, test$Numbers)
+
+#Validating the model results on original_test 
+
+evaluate_radial<- predict(fit.svm, original_test)
+confusionMatrix(evaluate_radial, original_test$Numbers)
+
+#====================================================================================================
+#CONCLUSONS 
+#The Accuracy i'm getting for SVM radial in Cross validation is same for all values of hyperparameter .
+# Have tried with different dataset, 10-20% of dataset from MNSIT train.i have even tried train on test Data.
+#i had used different grid sizes.i had also used to hyperparameter of narrow and wide range.0.001 upto 100,
+#but accuracy remain same for values of C and sigma.
+#the default hyperparameter from RBF model is not displaying efficient result on Cross Validation.
+# i had almost run 20+ cross validation for SVM radial.
+
+#as,SVM linear as good accuracy on test data set #Accuracy : 0.9106
+#Accuracy : 0.9129  on MNSIT test dataset
+#Accuracy : 0.9106  Cross validation on test dataset
+ #Accuracy : 0.9241 Cross validation on MNSIT test dataset
+#i suggest SVM linear as best model to predict handwritten digits

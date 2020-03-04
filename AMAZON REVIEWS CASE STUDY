@@ -1,0 +1,251 @@
+#### Purpose of Case Study
+### As a manager at a media company that want to start a new product line to boost your revenue. Case study to help company to answer certain questions 
+### which will help then while selecting new product line
+### Being a media company, you want to consider data from CDs , Vinyl , Movies, TV and Kindle Store.
+### Since we dont have access to the revenue and sales data we would use the ânumber of reviewsâ as a proxy for the number of products sold 
+
+### The date is available in the web store/sit.
+### Process of getting data aor analysis would be, 
+### 1.Get the data downloaded on EMR cluser 2.unzip the data and load it to AWS S3 bucket. 
+### 3.Once we have the data in AWS s3 bucket, we can laod the data in to SparkR and start the analysis.
+
+###============ Copy the data file from the stanford site to emr cluster and move those file to AWS S3 bucket ===========
+sudo wget http://snap.stanford.edu/data/amazon/productGraph/categoryFiles/reviews_Movies_and_TV_5.json.gz
+sudo gzip -d reviews_Movies_and_TV_5.json.gz
+aws s3 cp reviews_Movies_and_TV_5.json  s3://lbhatupgrad/
+
+sudo wget http://snap.stanford.edu/data/amazon/productGraph/categoryFiles/reviews_CDs_and_Vinyl_5.json.gz
+sudo gzip -d reviews_CDs_and_Vinyl_5.json.gz
+aws s3 cp reviews_CDs_and_Vinyl_5.json  s3://lbhatupgrad/
+
+sudo wget http://snap.stanford.edu/data/amazon/productGraph/categoryFiles/reviews_Kindle_Store_5.json.gz
+sudo gzip -d reviews_Kindle_Store_5.json.gz
+aws s3 cp reviews_Kindle_Store_5.json s3://lbhatupgrad/
+
+###============ Set Env for accessing Aws S3 bucket in SparkR ===========
+Sys.setenv("AWS_ACCESS_KEY_ID" = "AKIAJ-------------Y73ZTTA",
+           "AWS_SECRET_ACCESS_KEY" = "3+xakDyzwkX----------pabAw981E7l",
+           "AWS_DEFAULT_REGION" = "us-west-2")
+		   
+library(SparkR)
+library(ggplot2)
+library(sparklyr)
+
+sc = sparkR.session(master='local')
+
+BUCKET_NAME <- "s3a://lbhatupgrad"
+
+###============ Data Load from S3 bucket ===========
+
+#Load CD and Vinyl review data
+CDs_and_Vinyl <- SparkR::read.df(path=paste(BUCKET_NAME, "/reviews_CDs_and_Vinyl_5.json", sep = ""), source="json")
+
+#Load Kindel store review data
+Kindle_Store <- SparkR::read.df(path=paste(BUCKET_NAME, "/reviews_Kindle_Store_5.json", sep = ""), source="json")
+
+#Load Movies and TV review data
+Movies_and_TV <- SparkR::read.df(path=paste(BUCKET_NAME, "/reviews_Movies_and_TV_5.json", sep = ""), source="json")
+
+###========= Data Understanding and Preparation =========
+#Verify all the data and data points
+str(CDs_and_Vinyl)
+nrow(CDs_and_Vinyl)
+# number of review records 1097592
+
+str(Kindle_Store)
+nrow(Kindle_Store)
+# number of review records 982619
+
+str(Movies_and_TV)
+nrow(Movies_and_TV)
+# number of review records 1697533
+
+## Data set has 9 variables 
+## asin          : chr "0307141985" --- 	ProductID
+## helpful       : arr list(14, 15)  --- Helpfulness rating of the review
+## overall       : num 5 --- Product Rating
+## reviewText    : chr "I don't know who owns"  --- Review comments
+## reviewTime    : chr "10 6, 2005" 
+## reviewerID    : chr "A3IEV6R2B7VW5Z" 
+## reviewerName  : chr "J. Anderson" 
+## summary       : chr "LISTEN TO THE PUBLIC!!!" --- Review comments summary
+## unixReviewTime: num 1128556800  --- Date&Time of the review (UNIX time)
+
+ 
+## Add product categories as one of the variable/filed in data frame for further analysis
+## while adding category make sure that consider the product which have overall ration more then zero
+CDs_and_Vinyl$productcategory <- ifelse(CDs_and_Vinyl$overall>0, "CDs_and_Vinyl", "CDs_and_Vinyl")
+Movies_and_TV$productcategory <- ifelse(Movies_and_TV$overall>0, "Movies_and_TV", "Movies_and_TV")
+Kindle_Store$productcategory <- ifelse(Kindle_Store$overall>0, "Kindle_Store", "Kindle_Store")
+
+
+## Now let us merge the all 3 product category data/data frame  
+df_review_all <- rbind(CDs_and_Vinyl, Kindle_Store, Movies_and_TV) 
+
+## verify the combined data frame
+str(df_review_all)
+nrow(df_review_all)
+# number of review records 3777744
+
+
+## find the leangth of the review text. this will be used later for analysis
+df_review_all$reviewtextlength <- length(df_review_all$reviewText)
+str(df_review_all)
+
+## Register SparkDataFrame as a temporary view.
+createOrReplaceTempView(df_review_all, "df_review_all")
+
+
+###========= Data Analysis =========
+## Let us try to get few statistics or KPIs before we answer for few questions
+
+# Let us check overall rating and their reviews distributed for each product categories 
+histStats_kindle <- histogram(Kindle_Store, Kindle_Store$overall, nbins = 5)
+ggplot(histStats_kindle, aes(x = centroids, y = counts)) +
+    geom_bar(stat = "identity") +
+	xlab("Overall Rating") + ylab("Kindle_Store Frequency")
+
+histStats_Movies <- histogram(Movies_and_TV, Movies_and_TV$overall, nbins = 5)
+ggplot(histStats_Movies, aes(x = centroids, y = counts)) +
+  geom_bar(stat = "identity") +
+  xlab("Overall Rating") + ylab("Movies_and_TV Frequency")
+
+histStats_CD <- histogram(CDs_and_Vinyl, CDs_and_Vinyl$overall, nbins = 5)
+ggplot(histStats_CD, aes(x = centroids, y = counts)) +
+  geom_bar(stat = "identity") +
+  xlab("Overall Rating") + ylab("CDs_and_Vinyl Frequency")
+
+  
+  
+### Apply the filter for the total no of vote in helpful field i.e. helpful[1]>10 in all further analysis
+
+### We considering one record as one product sold as, each record has unique product id and reviwerid combination. 
+### Relation ship between the reviwer and product is many to many. reviwer might have brouht many product and single product is sold to many reviewer
+### So each records is one sales.
+### so it will be same if i use count reviewerID or productid or count (reviewerID , productid)
+### plots are not used much as we cant present it and wanted to show the data to tell our analysis.
+
+
+## Let us get the reviews counts , rating percent  and average helpful score for each rating/overall
+# for productcategory='CDs_and_Vinyl'
+df_CDsVinyl_rating <- head(sql("SELECT overall,count(reviewerID) as reviewcount,AVG(helpful[0]/helpful[1]) as helpfulscore FROM df_review_all where productcategory='CDs_and_Vinyl' and helpful[1]>10 group by overall Order by overall"))
+df_CDsVinyl_rating$total <- head(sum(df_CDsVinyl_rating$reviewcount))
+df_CDsVinyl_rating$ratingpc <- head((df_CDsVinyl_rating$reviewcount/df_CDsVinyl_rating$total)*100)
+head(df_CDsVinyl_rating)
+##
+#overall reviewcount helpfulscore  total  ratingpc
+#       1       23979    0.3252473 146324 16.387606
+#       2       14400    0.3989948 146324  9.841174
+#       3       15718    0.5582860 146324 10.741915
+#       4       22799    0.8273955 146324 15.581176
+#       5       69428    0.8769270 146324 47.448129
+## 
+   
+
+# for productcategory='Movies_and_TV'
+df_MoviesTV_rating <- head(sql("SELECT overall,count(reviewerID) as reviewcount,AVG(helpful[0]/helpful[1]) as helpfulscore FROM df_review_all where productcategory='Movies_and_TV' and helpful[1]>10 group by overall order by overall"))
+df_MoviesTV_rating$total <- head(sum(df_MoviesTV_rating$reviewcount))
+df_MoviesTV_rating$ratingpc <- head((df_MoviesTV_rating$reviewcount/df_MoviesTV_rating$total)*100)
+head(df_MoviesTV_rating)
+##
+#overall reviewcount helpfulscore  total ratingpc
+#       1       43156    0.3742570 191616 22.52213
+#       2       21364    0.4314639 191616 11.14938
+#       3       22382    0.6010658 191616 11.68065
+#       4       31940    0.8142409 191616 16.66875
+#       5       72774    0.8244206 191616 37.97908
+##
+
+
+# for productcategory='Kindle_Store'
+df_Kindle_rating <- head(sql("SELECT overall,count(reviewerID) as reviewcount,AVG(helpful[0]/helpful[1]) as helpfulscore FROM df_review_all where productcategory='Kindle_Store' and helpful[1]>10 group by overall order by overall"))
+df_Kindle_rating$total <- head(sum(df_Kindle_rating$reviewcount))
+df_Kindle_rating$ratingpc <- head((df_Kindle_rating$reviewcount/df_Kindle_rating$total)*100)
+head(df_Kindle_rating)
+##
+#overall reviewcount helpfulscore total ratingpc
+#       1        2623    0.6006944 18218 14.39785
+#       2        1963    0.7106996 18218 10.77506
+#       3        1854    0.8211600 18218 10.17675
+#       4        2531    0.9043392 18218 13.89285
+#       5        9247    0.9089879 18218 50.75749
+## 
+
+
+# How many reviews were writtern in each product category and what is the percentage 
+ReviewCounts_PCategory<- head(sql("SELECT productcategory,count(reviewerID) as reviewcount FROM df_review_all where helpful[1]>10 group by productcategory"))
+#ReviewCounts_PCategory<- head(sql("SELECT productcategory,count(asin) as reviewcount FROM df_review_all where helpful[1]>10 group by productcategory"))
+#ReviewCounts_PCategory<- head(sql("SELECT productcategory,count(distinct reviewerID, asin) as reviewcount FROM df_review_all where helpful[1]>10 group by productcategory"))
+
+ReviewCounts_PCategory$total <- head(sum(ReviewCounts_PCategory$reviewcount))
+ReviewCounts_PCategory$ratingpc <- head((ReviewCounts_PCategory$reviewcount/ReviewCounts_PCategory$total)*100)
+head(ReviewCounts_PCategory)
+
+# If we consider ânumber of reviewsâ as a proxy for the number of products sold revenue, 
+# So Movies_and_TV has the maximumn reviews or product sold and Kindle_Store has less no of reviews or product sold
+# productcategory count_review   total ratingpc
+#    Kindle_Store       18218 356158  5.115146
+#   Movies_and_TV      191616 356158 53.800841
+#   CDs_and_Vinyl      146324 356158 41.084013
+
+###
+### 1.Which product category has a larger market size? 
+### product category: Movies_and_TV has the larger market size with 53.8% 
+###
+
+
+## Average leangth of the review and helpfulscore for each product category and each rating 
+df_rating_help_review <- SparkR::collect(SparkR::sql("SELECT productcategory,overall,AVG(helpful[0]/helpful[1]) as helpfulscore, AVG(reviewtextlength) AvgReviewLength FROM df_review_all where helpful[1]>10 group by productcategory,overall order by productcategory,overall"))
+df_rating_help_review
+
+# productcategory overall helpfulscore AvgReviewLength
+#    CDs_and_Vinyl       1    0.3252473        810.6650
+#    CDs_and_Vinyl       2    0.3989948       1172.6105
+#    CDs_and_Vinyl       3    0.5582860       1538.7399
+#    CDs_and_Vinyl       4    0.8273955       1900.8664
+#    CDs_and_Vinyl       5    0.8769270       1759.1615
+#    Kindle_Store       1    0.6006944        904.1254
+#    Kindle_Store       2    0.7106996       1254.8487
+#    Kindle_Store       3    0.8211600       1350.3997
+#    Kindle_Store       4    0.9043392       1301.8601
+#    Kindle_Store       5    0.9089879       1083.5078
+#    Movies_and_TV       1    0.3742570       1040.2123
+#    Movies_and_TV       2    0.4314639       1521.4305
+#    Movies_and_TV       3    0.6010658       1829.6332
+#    Movies_and_TV       4    0.8142409       2111.1162
+#    Movies_and_TV       5    0.8244206       1880.6826
+
+###Looking at the trend the review lenght is more with the higher rating. mainly where the rating is 4. and also helpfulscore is higher for the rating 4 and 5
+
+
+# Get the review count for the overall rating 3,4,5, rating equalto 3 and above is considered as positive 
+df_category_product <- head(sql("SELECT productcategory,count(asin) productcount,sum(CASE WHEN overall in (3,4,5) then  1 else 0 end) positive_review FROM df_review_all where helpful[1]>10 group by productcategory"))
+df_category_product
+
+#productcategory productcount positive_review
+#    Kindle_Store        18218           13632
+#   Movies_and_TV       191616          127096
+#   CDs_and_Vinyl       146324          107945
+
+###
+### 2. Which product category is likely to be purchased heavily :
+### product category: Movies_and_TV as it has the higher posstive reviews
+###
+
+
+df_category_happycustomers <- head(sql("SELECT productcategory,AVG(helpful[0]/helpful[1]) as helpfulscore,sum(CASE WHEN overall in (3,4,5) then  1 else 0 end) positive_review,sum(CASE WHEN overall in (1,2) then 1 else 0 end) negative_review,AVG(reviewtextlength) reviewtextlength FROM df_review_all where helpful[1]>10 group by productcategory"))
+df_category_happycustomers$ratingpc <- head((df_category_happycustomers$positive_review/(df_category_happycustomers$positive_review+df_category_happycustomers$negative_review))*100)
+head(df_category_happycustomers)
+
+#productcategory helpfulscore positive_review negative_review reviewtextlength ratingpc
+#    Kindle_Store    0.8336507           13632            4586         1133.639 74.82709
+#   Movies_and_TV    0.6514358          127096           64520         1683.784 66.32849
+#   CDs_and_Vinyl    0.6975400          107945           38379         1544.404 73.77122
+
+###
+### 3.	Which product category is likely to make the customers happy after the purchase
+### product category: Kindle_Store has higest happyness score 83% and has more posstive sentiment / satisfaction
+###
+
+
+### Thou there is little less customer satisfaction in product category: Movies_and_TV , this product category is purchased heavily and has larget market size. Recomandation would be to go with Movies_and_TV category
